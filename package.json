@@ -1,0 +1,22 @@
+{
+  "name": "servicebus",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "prebuild": "del '**/*.{js,map,d.ts}' '!node_modules/**/*.{js,map,d.ts}'",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^14.14.41",
+    "del-cli": "^3.0.1",
+    "typescript": "^4.2.4"
+  },
+  "dependencies": {
+    "@azure/service-bus": "^7.0.5",
+    "dayjs": "^1.10.4"
+  }
+}
