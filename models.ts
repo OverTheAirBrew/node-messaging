@@ -27,12 +27,14 @@ export interface IFaultQueueListener<Data> {
 
 export interface IMessagingClient {
   listenForMessage<Data>(
-    contract: Contract<Data>,
+    contract: Contract<Data>[],
+    queue: string,
     listener: IQueueListener<Data>,
     options: IListenerOptions,
   ): Promise<void>;
   listenForFault<Data>(
     contract: Contract<Data>,
+    queue: string,
     listener: IFaultQueueListener<Data>,
   ): Promise<void>;
   sendMessage<Data>(
@@ -40,11 +42,23 @@ export interface IMessagingClient {
   ): { (request: Data): Promise<void> };
 }
 
-export class ServiceBusError<T> extends Error {
-  public originalMessage: T;
+export interface IMessagingClientOptions {
+  serviceName: string;
+  backoff?: AbstractBackoff;
+}
 
-  constructor(message: T, innerError: Error) {
-    super(innerError.message);
-    this.originalMessage = message;
-  }
+export interface IAzureMessagingClientOptions {
+  dialect: 'azureservicebus';
+  connectionString: string;
+}
+
+export interface IRabbitMessagingClientOptions {
+  dialect: 'rabbit';
+  url: string;
+}
+
+export interface IMessageEnverlope<T> {
+  firstSend: Date;
+  latestSend: Date;
+  message: T;
 }

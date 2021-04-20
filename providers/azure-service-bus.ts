@@ -1,30 +1,23 @@
 import {
   ServiceBusClient,
-  ServiceBusSender,
-  ServiceBusReceiver,
   ServiceBusAdministrationClient,
   RetryMode,
 } from '@azure/service-bus';
 
 import {
   Contract,
+  IAzureMessagingClientOptions,
   IFaultQueueListener,
   IListenerOptions,
   IMessagingClient,
+  IMessagingClientOptions,
   IQueueListener,
-  ServiceBusError,
-} from './models';
+} from '../models';
 
-import { AbstractBackoff } from './retry/abstractbackoff';
-import { snooze } from './utils';
+import { AbstractBackoff } from '../retry/abstractbackoff';
+import { snooze } from '../utils';
 
-interface IAzureServiceBusConfig {
-  connectionString: string;
-  serviceName: string;
-  backoffLogic?: AbstractBackoff;
-}
-
-export class AzureServiceBus implements IMessagingClient {
+class AzureServiceBus implements IMessagingClient {
   private readonly _connectionString: string;
   private readonly _serviceName: string;
   private readonly _backoff: AbstractBackoff;
@@ -32,19 +25,10 @@ export class AzureServiceBus implements IMessagingClient {
   private _client: ServiceBusClient;
   private _admin: ServiceBusAdministrationClient;
 
-  private openSubscriptions: ServiceBusReceiver[] = [];
-
-  constructor(config: IAzureServiceBusConfig) {
+  constructor(config: IMessagingClientOptions & IAzureMessagingClientOptions) {
     this._connectionString = config.connectionString;
     this._serviceName = config.serviceName;
-    this._backoff = config.backoffLogic;
-
-    // process.once('SIGTERM', async () => {
-    //   await this.closeAllSubscriptions();
-    // });
-    // process.once('SIGINT', async () => {
-    //   await this.closeAllSubscriptions();
-    // });
+    this._backoff = config.backoff;
   }
 
   public sendMessage<Data>(message: Contract<Data>) {
@@ -62,13 +46,13 @@ export class AzureServiceBus implements IMessagingClient {
 
   public async listenForFault<Data>(
     contract: Contract<Data>,
+    queue: string,
     listener: IFaultQueueListener<Data>,
   ) {
     const _listener = await this.setupSubscribe(`${contract.Topic}`, true);
-    this.openSubscriptions.push(_listener);
 
     _listener.subscribe({
-      processError: async (error) => {},
+      processError: async () => {},
       processMessage: async (message) => {
         const {
           deadLetterErrorDescription,
@@ -92,44 +76,44 @@ export class AzureServiceBus implements IMessagingClient {
   }
 
   public async listenForMessage<Data>(
-    contract: Contract<Data>,
+    contract: Contract<Data>[],
+    queue: string,
     listener: IQueueListener<Data>,
     opts?: IListenerOptions,
   ) {
-    const _listener = await this.setupSubscribe(contract.Topic);
-    this.openSubscriptions.push(_listener);
+    const backoff = opts?.backoffLogic || this._backoff || undefined;
 
-    const backoff = opts.backoffLogic || this._backoff || undefined;
+    const listeners = await Promise.all(
+      contract.map((c) => this.setupSubscribe(c.Topic)),
+    );
 
-    _listener.subscribe({
-      processMessage: async (message) => {
-        try {
-          await listener(message.body);
-          await _listener.completeMessage(message);
-        } catch (err) {
-          if (backoff) {
-            if (!backoff.shouldRetry(message.deliveryCount)) {
-              return await _listener.deadLetterMessage(message, {
-                deadLetterReason: err.name,
-                deadLetterErrorDescription: err.message,
-                deadLetterErrorStack: err.stack,
-              });
+    for (const _listener of listeners) {
+      _listener.subscribe({
+        processMessage: async (message) => {
+          try {
+            await listener(message.body);
+            await _listener.completeMessage(message);
+          } catch (err) {
+            if (backoff) {
+              if (!backoff.shouldRetry(message.deliveryCount)) {
+                return await _listener.deadLetterMessage(message, {
+                  deadLetterReason: err.name,
+                  deadLetterErrorDescription: err.message,
+                  deadLetterErrorStack: err.stack,
+                });
+              }
+
+              const waitTime = backoff.getWaitTime(message.deliveryCount);
+              await snooze(waitTime);
             }
 
-            const waitTime = backoff.getWaitTime(message.deliveryCount);
-            await snooze(waitTime);
+            throw err;
           }
-
-          throw err;
-        }
-      },
-      processError: async () => {},
-    });
+        },
+        processError: async () => {},
+      });
+    }
   }
-
-  // private async closeAllSubscriptions() {
-  //   await Promise.all(this.openSubscriptions.map((sub) => sub.close()));
-  // }
 
   private async tryCreateClient() {
     if (this._client) {
@@ -189,3 +173,5 @@ export class AzureServiceBus implements IMessagingClient {
     await this._admin.createTopic(topic);
   }
 }
+
+module.exports = AzureServiceBus;
