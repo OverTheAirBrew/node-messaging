@@ -9,11 +9,12 @@ import {
 } from '../models';
 
 import { Channel, connect, Connection, Message } from 'amqplib';
+import { AbstractBackoff } from '../retry/abstractbackoff';
 
 class RabbitMq implements IMessagingClient {
   private readonly _url: string;
   private readonly _serviceName: string;
-  private readonly _backoff: string;
+  private readonly _backoff: AbstractBackoff;
 
   private _connection: Connection;
   private _channel: Channel;
@@ -21,78 +22,104 @@ class RabbitMq implements IMessagingClient {
   constructor(config: IMessagingClientOptions & IRabbitMessagingClientOptions) {
     this._url = config.url;
     this._serviceName = config.serviceName;
-    this._backoff = config.url;
+    this._backoff = config.backoff;
   }
 
   public async listenForMessage<Data>(
-    contract: Contract<Data>[],
-    queue: string,
+    contract: Contract<Data>,
     listener: IQueueListener<Data>,
     options: IListenerOptions,
   ): Promise<void> {
+    if (!options || !options.queueName) {
+      throw new Error('No queue name specified');
+    }
+
     await this.tryCreateConnection();
-
-    await Promise.all(
-      contract.map((c) => this._bindExchangeToQueue(c.Topic, queue)),
+    const backoff = options?.backoffLogic || this._backoff || undefined;
+    const channel = await this._bindExchangeToQueue(
+      contract.Topic,
+      options.queueName,
     );
-
-    const channel = await this._connection.createChannel();
     // track open channels
-
-    await channel.assertQueue(queue, {
-      durable: true,
-    });
 
     await channel.prefetch(1);
 
-    async function processMessage(message: Message) {
+    const processMessage = async (message: Message) => {
       if (!message) {
         return;
       }
-
       //shutdown
-
       let data = JSON.parse(message.content.toString());
-
       try {
         await listener(data);
         channel.ack(message);
       } catch (err) {
-        //backoff
-      }
-    }
+        if (backoff) {
+          if (!backoff.shouldRetry(message.fields.deliveryTag)) {
+            await this.send(`dlq.${this._serviceName}.${contract.Topic}`, {
+              error: err,
+              originalMessage: message,
+            });
 
-    await channel.consume(queue, processMessage, {});
+            return channel.nack(message, false, false);
+          }
+        }
+        //backoff
+        channel.nack(message);
+      }
+    };
+    await channel.consume(options.queueName, processMessage, {});
   }
 
   public async listenForFault<Data>(
     contract: Contract<Data>,
-    queue: string,
     listener: IFaultQueueListener<Data>,
+    options: IListenerOptions,
   ): Promise<void> {
-    throw new Error('Method not implemented.');
+    if (!options || !options.queueName) {
+      throw new Error('No queue name specified');
+    }
+
+    await this.tryCreateConnection();
+    const channel = await this._bindExchangeToQueue(
+      `dlq.${this._serviceName}.${contract.Topic}`,
+      options.queueName,
+    );
+
+    const processMessage = async (message: Message) => {
+      try {
+        let data = JSON.parse(message.content.toString());
+        await listener(data.message, data.error);
+      } catch {
+      } finally {
+        channel.ack(message);
+      }
+    };
+
+    await channel.consume(options.queueName, processMessage, {});
   }
 
   public sendMessage<Data>(message: Contract<Data>) {
     return async (request: Data) => {
-      await this.tryCreateConnection();
-      await this._channel.assertExchange(message.Topic, 'topic', {});
-      const isSuccess = this._channel.publish(
-        message.Topic,
-        '*',
-        Buffer.from(JSON.stringify(request)),
-        {
-          contentType: 'application/json',
-          headers: undefined,
-        },
-      );
-
-      if (!isSuccess) {
-        throw new Error(
-          `Failed to publish to topic ${message.Topic} with data ${request}`,
-        );
-      }
+      await this.send(message.Topic, request);
     };
+  }
+
+  private async send<T>(topic: string, data: T, routeKey: string = '*') {
+    await this.tryCreateConnection();
+    await this._channel.assertExchange(topic, 'topic', {});
+    const isSuccess = this._channel.publish(
+      topic,
+      routeKey,
+      Buffer.from(JSON.stringify(data)),
+      {
+        contentType: 'application/json',
+      },
+    );
+
+    if (!isSuccess) {
+      throw new Error(`Failed to publish to topic ${topic} with data ${data}`);
+    }
   }
 
   private async tryCreateConnection() {
@@ -108,7 +135,7 @@ class RabbitMq implements IMessagingClient {
   private async _bindExchangeToQueue(
     exchange: string,
     queue: string,
-  ): Promise<void> {
+  ): Promise<Channel> {
     await this.tryCreateConnection();
 
     const channel = await this._connection.createChannel();
@@ -117,11 +144,18 @@ class RabbitMq implements IMessagingClient {
       await channel.assertQueue(queue, null);
       await channel.assertExchange(exchange, 'topic', null);
 
-      await channel.bindQueue(queue, exchange, `*`, {});
+      // if (!exchange.includes('dlq')) {
+      //   await channel.assertExchange(`dlq.${exchange}`, 'topic', null);
+      // }
+
+      await channel.bindQueue(queue, exchange, '*', {
+        'x-dead-letter-exchange': `dlq.${this._serviceName}.${queue}`,
+      });
+      await channel.bindQueue(queue, exchange, `${queue}.${exchange}`, {});
+      return channel;
     } catch (err) {
-      throw err;
-    } finally {
       await channel.close();
+      throw err;
     }
   }
 }

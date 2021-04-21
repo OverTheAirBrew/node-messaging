@@ -46,8 +46,8 @@ class AzureServiceBus implements IMessagingClient {
 
   public async listenForFault<Data>(
     contract: Contract<Data>,
-    queue: string,
     listener: IFaultQueueListener<Data>,
+    options: IListenerOptions,
   ) {
     const _listener = await this.setupSubscribe(`${contract.Topic}`, true);
 
@@ -76,43 +76,38 @@ class AzureServiceBus implements IMessagingClient {
   }
 
   public async listenForMessage<Data>(
-    contract: Contract<Data>[],
-    queue: string,
+    contract: Contract<Data>,
     listener: IQueueListener<Data>,
     opts?: IListenerOptions,
   ) {
     const backoff = opts?.backoffLogic || this._backoff || undefined;
 
-    const listeners = await Promise.all(
-      contract.map((c) => this.setupSubscribe(c.Topic)),
-    );
+    const _listener = await this.setupSubscribe(contract.Topic);
 
-    for (const _listener of listeners) {
-      _listener.subscribe({
-        processMessage: async (message) => {
-          try {
-            await listener(message.body);
-            await _listener.completeMessage(message);
-          } catch (err) {
-            if (backoff) {
-              if (!backoff.shouldRetry(message.deliveryCount)) {
-                return await _listener.deadLetterMessage(message, {
-                  deadLetterReason: err.name,
-                  deadLetterErrorDescription: err.message,
-                  deadLetterErrorStack: err.stack,
-                });
-              }
-
-              const waitTime = backoff.getWaitTime(message.deliveryCount);
-              await snooze(waitTime);
+    _listener.subscribe({
+      processMessage: async (message) => {
+        try {
+          await listener(message.body);
+          await _listener.completeMessage(message);
+        } catch (err) {
+          if (backoff) {
+            if (!backoff.shouldRetry(message.deliveryCount)) {
+              return await _listener.deadLetterMessage(message, {
+                deadLetterReason: err.name,
+                deadLetterErrorDescription: err.message,
+                deadLetterErrorStack: err.stack,
+              });
             }
 
-            throw err;
+            const waitTime = backoff.getWaitTime(message.deliveryCount);
+            await snooze(waitTime);
           }
-        },
-        processError: async () => {},
-      });
-    }
+
+          throw err;
+        }
+      },
+      processError: async () => {},
+    });
   }
 
   private async tryCreateClient() {

@@ -10,8 +10,13 @@ export interface Fault<Data extends Contract<Data>> {
   error: Error;
 }
 
+/**
+ * @param {AbstractBackoff} backoffLogic - defines the backoff logic for the specific listener. Overrides the one set at a global level
+ * @param {string} queueName - the name of the queue to use (only for rabbitmq)
+ */
 export interface IListenerOptions {
   backoffLogic?: AbstractBackoff;
+  queueName?: string;
 }
 
 export interface IQueueListener<Data> {
@@ -27,15 +32,14 @@ export interface IFaultQueueListener<Data> {
 
 export interface IMessagingClient {
   listenForMessage<Data>(
-    contract: Contract<Data>[],
-    queue: string,
+    contract: Contract<Data>,
     listener: IQueueListener<Data>,
     options: IListenerOptions,
   ): Promise<void>;
   listenForFault<Data>(
     contract: Contract<Data>,
-    queue: string,
     listener: IFaultQueueListener<Data>,
+    options: IListenerOptions,
   ): Promise<void>;
   sendMessage<Data>(
     message: Contract<Data>,

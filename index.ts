@@ -10,35 +10,31 @@ import {
   IRabbitMessagingClientOptions,
 } from './models';
 
+type InputOptions = IMessagingClientOptions &
+  (IAzureMessagingClientOptions | IRabbitMessagingClientOptions);
+
 export class MessagingClient {
   private readonly client: IMessagingClient;
 
-  private options: IMessagingClientOptions &
-    (IAzureMessagingClientOptions | IRabbitMessagingClientOptions);
+  private options: InputOptions;
 
-  constructor(
-    opts: IMessagingClientOptions &
-      (IAzureMessagingClientOptions | IRabbitMessagingClientOptions),
-  ) {
+  constructor(opts: InputOptions) {
     this.options = opts;
 
     let Dialect: any;
 
-    switch (this.getDialect()) {
-      case 'azureservicebus':
-        moduleExists('@azure/service-bus');
-        Dialect = require('./providers/azure-service-bus');
-        break;
+    const dialect = this.getDialect();
 
-      case 'rabbit':
-        moduleExists('amqplib');
-        Dialect = require('./providers/rabbit-mq');
-        break;
-
-      default:
-        throw new Error(
-          `The dialect ${this.getDialect()} is not supported. Supported dialects: rabbitmq and azureservicebus.`,
-        );
+    if (dialect === 'rabbit') {
+      moduleExists('amqplib');
+      Dialect = require('./providers/rabbit-mq');
+    } else if (dialect === 'azureservicebus') {
+      moduleExists('@azure/service-bus');
+      Dialect = require('./providers/azure-service-bus');
+    } else {
+      throw new Error(
+        `The dialect ${this.getDialect()} is not supported. Supported dialects: rabbitmq and azureservicebus.`,
+      );
     }
 
     this.client = new Dialect(opts);
@@ -50,19 +46,18 @@ export class MessagingClient {
 
   public async listenForFault<Data>(
     contract: Contract<Data>,
-    queue: string,
     listener: IFaultQueueListener<Data>,
-  ) {
-    return await this.client.listenForFault(contract, queue, listener);
+    opts?: IListenerOptions,
+  ): Promise<void> {
+    return await this.client.listenForFault(contract, listener, opts);
   }
 
   public async listenForMessage<Data>(
-    contract: Contract<Data>[],
-    queue: string,
+    contract: Contract<Data>,
     listener: IQueueListener<Data>,
     opts?: IListenerOptions,
   ) {
-    return await this.client.listenForMessage(contract, queue, listener, opts);
+    return await this.client.listenForMessage(contract, listener, opts);
   }
 
   private getDialect() {

@@ -31,47 +31,56 @@ Promise.resolve()
       serviceName: 'testing',
       dialect: 'rabbit',
       url: 'amqp://guest:guest@localhost:5672/%2f',
+      backoff: new Immediate(5),
     });
 
-    // await rabbitMessagingClient.listenForMessage(
-    //   [Created],
-    //   Created.Topic,
-    //   (message) => {
-    //     console.log(message);
-    //   },
-    // );
-
-    // await rabbitMessagingClient.listenForMessage(
-    //   [Created2],
-    //   Created2.Topic,
-    //   (message) => {
-    //     console.log('TEST2');
-    //   },
-    // );
-
-    // await rabbitMessagingClient.sendMessage(Created)({
-    //   data: 'hello',
-    // });
-
-    await serviceBusMessagingClient.listenForMessage(
-      [Created],
-      Created.Topic,
-      (message) => {
-        console.log(message);
+    rabbitMessagingClient.listenForFault(
+      Created,
+      () => {
+        console.log('a');
+      },
+      {
+        queueName: 'created.fault',
       },
     );
 
-    await serviceBusMessagingClient.listenForMessage(
-      [Created2],
-      Created2.Topic,
+    rabbitMessagingClient.listenForMessage(
+      Created,
+      (message) => {
+        throw new Error('');
+        console.log(message);
+      },
+      { queueName: 'testing1' },
+    );
+
+    rabbitMessagingClient.listenForMessage(
+      Created2,
       (message) => {
         console.log('TEST2');
       },
+      { queueName: 'testing 2' },
     );
 
-    await serviceBusMessagingClient.sendMessage(Created)({
+    await rabbitMessagingClient.sendMessage(Created)({
       data: 'hello',
     });
+
+    // await serviceBusMessagingClient.listenForMessage(Created, (message) => {
+    //   throw new Error('error');
+    //   console.log(message);
+    // });
+
+    // await serviceBusMessagingClient.listenForFault(Created, (message) => {
+    //   console.log('error');
+    // });
+
+    // await serviceBusMessagingClient.listenForMessage(Created2, (message) => {
+    //   console.log('TEST2');
+    // });
+
+    // await serviceBusMessagingClient.sendMessage(Created)({
+    //   data: 'hello',
+    // });
   })
   .catch((err) => {
     console.log(err);
