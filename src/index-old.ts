@@ -1,8 +1,8 @@
 import { moduleExists } from './lib/module-exists';
 import {
   Contract,
-  IAzureMessagingClientOptions,
   IFaultQueueListener,
+  IInMemoryClientOptions,
   IListenerOptions,
   IMessagingClient,
   IMessagingClientOptions,
@@ -11,7 +11,7 @@ import {
 } from './models';
 
 type InputOptions = IMessagingClientOptions &
-  (IAzureMessagingClientOptions | IRabbitMessagingClientOptions);
+  (IRabbitMessagingClientOptions | IInMemoryClientOptions);
 
 export class MessagingClient {
   private readonly client: IMessagingClient;
@@ -27,13 +27,13 @@ export class MessagingClient {
 
     if (dialect === 'rabbit') {
       moduleExists('amqplib');
-      Dialect = require('./providers/rabbit-mq');
-    } else if (dialect === 'azureservicebus') {
-      moduleExists('@azure/service-bus');
-      Dialect = require('./providers/azure-service-bus');
+      Dialect = require('./providers/rabbit-mq').default;
+    } else if (dialect === 'in-memory') {
+      moduleExists('fastq');
+      Dialect = require('./providers/in-memory').default;
     } else {
       throw new Error(
-        `The dialect ${this.getDialect()} is not supported. Supported dialects: rabbitmq and azureservicebus.`,
+        `The dialect ${this.getDialect()} is not supported. Supported dialects: rabbitmq and in-memory.`,
       );
     }
 

@@ -2,7 +2,7 @@ export abstract class AbstractBackoff {
   maxRetries: number;
 
   constructor(maxRetries: number) {
-    this.maxRetries = maxRetries - 1;
+    this.maxRetries = maxRetries;
   }
 
   public shouldRetry(retryNumber: number) {

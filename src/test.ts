@@ -1,4 +1,4 @@
-import { MessagingClient } from '.';
+import { MessagingClient } from './index-old';
 import { Immediate } from './retry/immediate';
 
 export module Created {
@@ -19,14 +19,6 @@ export module Created2 {
 
 Promise.resolve()
   .then(async () => {
-    const serviceBusMessagingClient = new MessagingClient({
-      serviceName: 'testing',
-      dialect: 'azureservicebus',
-      connectionString:
-        'Endpoint=sb://otatesting.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=Sy91q3q39LRJhd/oeimf1S6xxNi2nsq/ivYPjgfj+BA=',
-      backoff: new Immediate(5),
-    });
-
     const rabbitMessagingClient = new MessagingClient({
       serviceName: 'testing',
       dialect: 'rabbit',
@@ -64,23 +56,6 @@ Promise.resolve()
     await rabbitMessagingClient.sendMessage(Created)({
       data: 'hello',
     });
-
-    // await serviceBusMessagingClient.listenForMessage(Created, (message) => {
-    //   throw new Error('error');
-    //   console.log(message);
-    // });
-
-    // await serviceBusMessagingClient.listenForFault(Created, (message) => {
-    //   console.log('error');
-    // });
-
-    // await serviceBusMessagingClient.listenForMessage(Created2, (message) => {
-    //   console.log('TEST2');
-    // });
-
-    // await serviceBusMessagingClient.sendMessage(Created)({
-    //   data: 'hello',
-    // });
   })
   .catch((err) => {
     console.log(err);

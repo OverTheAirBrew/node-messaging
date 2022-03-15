@@ -17,6 +17,7 @@ export interface Fault<Data extends Contract<Data>> {
 export interface IListenerOptions {
   backoffLogic?: AbstractBackoff;
   queueName?: string;
+  concurrency?: number;
 }
 
 export interface IQueueListener<Data> {
@@ -41,9 +42,9 @@ export interface IMessagingClient {
     listener: IFaultQueueListener<Data>,
     options: IListenerOptions,
   ): Promise<void>;
-  sendMessage<Data>(
-    message: Contract<Data>,
-  ): { (request: Data): Promise<void> };
+  sendMessage<Data>(message: Contract<Data>): {
+    (request: Data): Promise<void>;
+  };
 }
 
 export interface IMessagingClientOptions {
@@ -51,18 +52,11 @@ export interface IMessagingClientOptions {
   backoff?: AbstractBackoff;
 }
 
-export interface IAzureMessagingClientOptions {
-  dialect: 'azureservicebus';
-  connectionString: string;
-}
-
 export interface IRabbitMessagingClientOptions {
   dialect: 'rabbit';
   url: string;
 }
 
-export interface IMessageEnverlope<T> {
-  firstSend: Date;
-  latestSend: Date;
-  message: T;
+export interface IInMemoryClientOptions {
+  dialect: 'in-memory';
 }

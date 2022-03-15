@@ -1,24 +1,36 @@
 {
-  "name": "servicebus",
+  "name": "node-messaging",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "prebuild": "del '**/*.{js,map,d.ts}' '!node_modules/**/*.{js,map,d.ts}'",
-    "build": "tsc"
+    "prebuild": "del 'dist' '!node_modules/**/*.{js,map,d.ts}'",
+    "build": "tsc",
+    "test": "nyc --reporter=text-summary mocha 'dist/test/**/*.spec.js' --exit --bail",
+    "posttest": "nyc report --reporter=cobertura"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@azure/service-bus": "^7.0.5",
     "@types/amqplib": "^0.5.17",
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^9.1.0",
     "@types/node": "^14.14.41",
+    "@types/sinon": "^10.0.11",
     "amqplib": "^0.7.1",
+    "chai": "^4.3.6",
     "del-cli": "^3.0.1",
+    "fastq": "^1.13.0",
+    "mocha": "^9.2.1",
+    "node-uuid": "^1.4.8",
+    "nyc": "^15.1.0",
+    "sinon": "^13.0.1",
     "typescript": "^4.2.4"
   },
   "dependencies": {
-    "dayjs": "^1.10.4"
+    "dayjs": "^1.10.4",
+    "reflect-metadata": "^0.1.13",
+    "typedi": "^0.10.0"
   }
 }

@@ -1,3 +1,4 @@
+import { Channel, connect, Connection, Message } from 'amqplib';
 import {
   Contract,
   IFaultQueueListener,
@@ -7,17 +8,17 @@ import {
   IQueueListener,
   IRabbitMessagingClientOptions,
 } from '../models';
-
-import { Channel, connect, Connection, Message } from 'amqplib';
 import { AbstractBackoff } from '../retry/abstractbackoff';
 
-class RabbitMq implements IMessagingClient {
+export default class RabbitMq implements IMessagingClient {
   private readonly _url: string;
   private readonly _serviceName: string;
   private readonly _backoff: AbstractBackoff;
 
   private _connection: Connection;
   private _channel: Channel;
+
+  private connectionPromise: Promise<void>;
 
   constructor(config: IMessagingClientOptions & IRabbitMessagingClientOptions) {
     this._url = config.url;
@@ -30,11 +31,28 @@ class RabbitMq implements IMessagingClient {
     listener: IQueueListener<Data>,
     options: IListenerOptions,
   ): Promise<void> {
+    const rabbitListener = (data: Data) => {
+      Promise.resolve()
+        .then(() => listener.apply(data, [data]))
+        .catch((err) => console.error(err));
+    };
+
+    this._listenForMessage(contract, rabbitListener, options).catch((err) => {
+      console.error(err);
+    });
+  }
+
+  private async _listenForMessage<Data>(
+    contract: Contract<Data>,
+    listener: IQueueListener<Data>,
+    options: IListenerOptions,
+  ) {
     if (!options || !options.queueName) {
       throw new Error('No queue name specified');
     }
 
     await this.tryCreateConnection();
+
     const backoff = options?.backoffLogic || this._backoff || undefined;
     const channel = await this._bindExchangeToQueue(
       contract.Topic,
@@ -48,10 +66,12 @@ class RabbitMq implements IMessagingClient {
       if (!message) {
         return;
       }
+
       //shutdown
       let data = JSON.parse(message.content.toString());
+
       try {
-        await listener(data);
+        await listener.apply(message, [data]);
         channel.ack(message);
       } catch (err) {
         if (backoff) {
@@ -68,7 +88,7 @@ class RabbitMq implements IMessagingClient {
         channel.nack(message);
       }
     };
-    await channel.consume(options.queueName, processMessage, {});
+    channel.consume(options.queueName, processMessage, {});
   }
 
   public async listenForFault<Data>(
@@ -123,13 +143,10 @@ class RabbitMq implements IMessagingClient {
   }
 
   private async tryCreateConnection() {
-    if (this._connection) {
-      return;
+    if (!this._connection) {
+      this._connection = await connect(this._url);
+      this._channel = await this._connection.createChannel();
     }
-
-    this._connection = await connect(this._url);
-
-    this._channel = await this._connection.createChannel();
   }
 
   private async _bindExchangeToQueue(
@@ -159,5 +176,3 @@ class RabbitMq implements IMessagingClient {
     }
   }
 }
-
-module.exports = RabbitMq;

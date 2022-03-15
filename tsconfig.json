@@ -5,10 +5,13 @@
     "sourceMap": true,
     "moduleResolution": "node",
     "declaration": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "compileOnSave": true,
-  "include": ["**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules"],
   "atom": {
     "formatOnSave": true
